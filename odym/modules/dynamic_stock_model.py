@@ -19,12 +19,14 @@ dependencies:
     numpy >= 1.9
     scipy >= 0.14
 
-Repository for this class, documentation, and tutorials: https://github.com/IndEcol/ODYM
+Repository for this class, documentation, and tutorials:
+https://github.com/IndEcol/ODYM
 
 """
 
 import numpy as np
 import scipy.stats
+
 
 def __version__():
     """Return a brief version string and statement for this class."""
@@ -358,72 +360,67 @@ class DynamicStockModel(object):
     4) check mass balance.
     """
 
-    def compute_stock_driven_model(self, NegativeInflowCorrect = False):
-        """ With given total stock and lifetime distribution,
-            the method builds the stock by cohort and the inflow.
-        """
-        if self.s is not None:
-            if self.lt is not None:
-                self.s_c = np.zeros((len(self.t), len(self.t)))
-                self.o_c = np.zeros((len(self.t), len(self.t)))
-                self.i = np.zeros(len(self.t))
-                # construct the sf of a product of cohort tc remaining in the stock in year t
-                self.compute_sf() # Computes sf if not present already.
-                if NegativeInflowCorrect is True: # if the stock declines faster than according to the lifetime model, this option allows to extract additional stock items.
-                    # This part was contributed by Sebastiaan Deetman, CML Leiden, and adapted by S.P. so that the mass balance of the stock fits.
-                   self.compute_outflow_pdf() # Determine pdf from sf array for computations below.
-                # First year:
-                if self.sf[0, 0] != 0: # Else, inflow is 0.
-                    self.i[0] = self.s[0] / self.sf[0, 0]
-                self.s_c[:, 0] = self.i[0] * self.sf[:, 0] # Future decay of age-cohort of year 0.
-                self.o_c[0, 0] = self.i[0] - self.s_c[0, 0]
-                # all other years:
-                for m in range(1, len(self.t)):  # for all years m, starting in second year
-                    # 1) Compute outflow from previous age-cohorts up to m-1
-                    self.o_c[m, 0:m] = self.s_c[m-1, 0:m] - self.s_c[m, 0:m] # outflow table is filled row-wise, for each year m.
-                    # 2) Determine inflow from mass balance:
-                    if NegativeInflowCorrect is False: # if no correction for negative inflows is made
-                        if self.sf[m,m] != 0: # Else, inflow is 0.
-                            self.i[m] = (self.s[m] - self.s_c[m, :].sum()) / self.sf[m,m] # allow for outflow during first year by rescaling with 1/sf[m,m]
-                        # 3) Add new inflow to stock and determine future decay of new age-cohort
-                        self.s_c[m::, m] = self.i[m] * self.sf[m::, m]
-                        self.o_c[m, m]   = self.i[m] * (1 - self.sf[m, m])
-                    # 2a) Correct remaining stock in cases where inflow would be negative:
-                    if NegativeInflowCorrect is True: # if the stock declines faster than according to the lifetime model, this option allows to extract additional stock items.
-                        # The negative inflow correction implemented here was developed in a joined effort by Sebastiaan Deetman and Stefan Pauliuk.
-                        InflowTest = self.s[m] - self.s_c[m, :].sum()
-                        if InflowTest < 0: # if stock-driven model would yield negative inflow
-                            Delta = -1 * InflowTest # Delta > 0!
-                            self.i[m] = 0 # Set inflow to 0 and distribute mass balance gap onto remaining cohorts:
-                            if self.s_c[m,:].sum() != 0:
-                                Delta_percent = Delta / self.s_c[m,:].sum()
-                                # Distribute gap equally across all cohorts (each cohort is adjusted by the same %, based on surplus with regards to the prescribed stock)
-                                # Delta_percent is a % value <= 100%
-                            else:
-                                Delta_percent = 0 # stock in this year is already zero, method does not work in this case.
-                            # correct for outflow and stock in current and future years
-                            # adjust the entire stock AFTER year m as well, stock is lowered in year m, so future cohort survival also needs to decrease.
-                            self.o_c[m, :] = self.o_c[m, :] + (self.s_c[m, :] * Delta_percent).copy()  # increase outflow according to the lost fraction of the stock, based on Delta_c
-                            self.s_c[m::,0:m] = self.s_c[m::,0:m] * (1-Delta_percent.copy()) # shrink future description of stock from previous age-cohorts by factor Delta_percent in current AND future years.
-                        else: # If no negative inflow would occur
-                            if self.sf[m,m] != 0: # Else, inflow is 0.
-                                self.i[m] = (self.s[m] - self.s_c[m, :].sum()) / self.sf[m,m] # allow for outflow during first year by rescaling with 1/sf[m,m]
-                            # Add new inflow to stock and determine future decay of new age-cohort
-                            self.s_c[m::, m] = self.i[m] * self.sf[m::, m]
-                            self.o_c[m, m]   = self.i[m] * (1 - self.sf[m, m])
-                        # NOTE: This method of negative inflow correction is only of of many plausible methods of increasing the outflow to keep matching stock levels.
-                        # It assumes that the surplus stock is removed in the year that it becomes obsolete. Each cohort loses the same fraction.
-                        # Modellers need to try out whether this method leads to justifiable results.
-                        # In some situations it is better to change the lifetime assumption than using the NegativeInflowCorrect option.
+    def compute_stock_driven_model(self, NegativeInflowCorrect=False):
+        """Build the stock by cohort and the inflow."""
+        if not self.s:
+            raise ValueError('No stock specified.')
+        elif not self.lt:
+            raise ValueError('No lifetime distribution specified.')
 
-                return self.s_c, self.o_c, self.i
-            else:
-                # No lifetime distribution specified
-                return None, None, None
-        else:
-            # No stock specified
-            return None, None, None
+        self.s_c = np.zeros((len(self.t), len(self.t)))
+        self.o_c = np.zeros((len(self.t), len(self.t)))
+        self.i = np.zeros(len(self.t))
 
+        # construct the sf of a product of cohort tc remaining in the stock in year t
+        self.compute_sf() # Computes sf if not present already.
+        if NegativeInflowCorrect is True: # if the stock declines faster than according to the lifetime model, this option allows to extract additional stock items.
+            # This part was contributed by Sebastiaan Deetman, CML Leiden, and adapted by S.P. so that the mass balance of the stock fits.
+           self.compute_outflow_pdf() # Determine pdf from sf array for computations below.
+        # First year:
+        if self.sf[0, 0] != 0: # Else, inflow is 0.
+            self.i[0] = self.s[0] / self.sf[0, 0]
+        self.s_c[:, 0] = self.i[0] * self.sf[:, 0] # Future decay of age-cohort of year 0.
+        self.o_c[0, 0] = self.i[0] - self.s_c[0, 0]
+        # all other years:
+        for m in range(1, len(self.t)):  # for all years m, starting in second year
+            # 1) Compute outflow from previous age-cohorts up to m-1
+            self.o_c[m, 0:m] = self.s_c[m-1, 0:m] - self.s_c[m, 0:m] # outflow table is filled row-wise, for each year m.
+            # 2) Determine inflow from mass balance:
+            if NegativeInflowCorrect is False: # if no correction for negative inflows is made
+                if self.sf[m,m] != 0: # Else, inflow is 0.
+                    self.i[m] = (self.s[m] - self.s_c[m, :].sum()) / self.sf[m,m] # allow for outflow during first year by rescaling with 1/sf[m,m]
+                # 3) Add new inflow to stock and determine future decay of new age-cohort
+                self.s_c[m::, m] = self.i[m] * self.sf[m::, m]
+                self.o_c[m, m]   = self.i[m] * (1 - self.sf[m, m])
+            # 2a) Correct remaining stock in cases where inflow would be negative:
+            if NegativeInflowCorrect is True: # if the stock declines faster than according to the lifetime model, this option allows to extract additional stock items.
+                # The negative inflow correction implemented here was developed in a joined effort by Sebastiaan Deetman and Stefan Pauliuk.
+                InflowTest = self.s[m] - self.s_c[m, :].sum()
+                if InflowTest < 0: # if stock-driven model would yield negative inflow
+                    Delta = -1 * InflowTest # Delta > 0!
+                    self.i[m] = 0 # Set inflow to 0 and distribute mass balance gap onto remaining cohorts:
+                    if self.s_c[m,:].sum() != 0:
+                        Delta_percent = Delta / self.s_c[m,:].sum()
+                        # Distribute gap equally across all cohorts (each cohort is adjusted by the same %, based on surplus with regards to the prescribed stock)
+                        # Delta_percent is a % value <= 100%
+                    else:
+                        Delta_percent = 0 # stock in this year is already zero, method does not work in this case.
+                    # correct for outflow and stock in current and future years
+                    # adjust the entire stock AFTER year m as well, stock is lowered in year m, so future cohort survival also needs to decrease.
+                    self.o_c[m, :] = self.o_c[m, :] + (self.s_c[m, :] * Delta_percent).copy()  # increase outflow according to the lost fraction of the stock, based on Delta_c
+                    self.s_c[m::,0:m] = self.s_c[m::,0:m] * (1-Delta_percent.copy()) # shrink future description of stock from previous age-cohorts by factor Delta_percent in current AND future years.
+                else: # If no negative inflow would occur
+                    if self.sf[m,m] != 0: # Else, inflow is 0.
+                        self.i[m] = (self.s[m] - self.s_c[m, :].sum()) / self.sf[m,m] # allow for outflow during first year by rescaling with 1/sf[m,m]
+                    # Add new inflow to stock and determine future decay of new age-cohort
+                    self.s_c[m::, m] = self.i[m] * self.sf[m::, m]
+                    self.o_c[m, m]   = self.i[m] * (1 - self.sf[m, m])
+                # NOTE: This method of negative inflow correction is only of of many plausible methods of increasing the outflow to keep matching stock levels.
+                # It assumes that the surplus stock is removed in the year that it becomes obsolete. Each cohort loses the same fraction.
+                # Modellers need to try out whether this method leads to justifiable results.
+                # In some situations it is better to change the lifetime assumption than using the NegativeInflowCorrect option.
+
+        return self.s_c, self.o_c, self.i
 
     def compute_stock_driven_model_initialstock(self,InitialStock,SwitchTime,NegativeInflowCorrect = False):
         """ With given total stock and lifetime distribution, the method builds the stock by cohort and the inflow.
