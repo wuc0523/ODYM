@@ -183,22 +183,31 @@ class DynamicStockModel(object):
     """ Part 2: Lifetime model. """
 
     def compute_outflow_pdf(self):
+        """Lifetime model.
+
+        Returns an array year-by-cohort of the probability of a item added to
+        stock in year m (aka cohort m) leaves in in year n. This value equals
+        pdf(n,m). This is the only method for the inflow-driven model where the
+        lifetime distribution directly enters the computation. All other stock
+        variables are determined by mass balance. The shape of the output pdf
+        array is NoofYears * NoofYears, but the meaning is years by
+        age-cohorts. The method does nothing if the pdf alreay exists.
         """
-        Lifetime model. The method compute outflow_pdf returns an array year-by-cohort of the probability of a item added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
-        This is the only method for the inflow-driven model where the lifetime distribution directly enters the computation. All other stock variables are determined by mass balance.
-        The shape of the output pdf array is NoofYears * NoofYears, but the meaning is years by age-cohorts.
-        The method does nothing if the pdf alreay exists.
-        """
-        if self.pdf is None:
-            self.compute_sf() # computation of pdfs moved to this method: compute survival functions sf first, then calculate pdfs from sf.
-            self.pdf   = np.zeros((len(self.t), len(self.t)))
-            self.pdf[np.diag_indices(len(self.t))] = np.ones(len(self.t)) - self.sf.diagonal(0)
-            for m in range(0,len(self.t)):
-                self.pdf[np.arange(m+1,len(self.t)),m] = -1 * np.diff(self.sf[np.arange(m,len(self.t)),m])
+        if self.pdf:
+            # PDF already computed
             return self.pdf
-        else:
-            # pdf already exists
-            return self.pdf
+
+        # Compute survival functions, if necessary
+        self.compute_sf()
+
+        self.pdf = np.zeros((len(self.t), len(self.t)))
+        self.pdf[np.diag_indices(len(self.t))] = (np.ones(len(self.t)) -
+                                                  self.sf.diagonal(0))
+        for m in range(0, len(self.t)):
+            self.pdf[np.arange(m + 1, len(self.t)), m] = -1 * \
+                np.diff(self.sf[np.arange(m, len(self.t)), m])
+
+        return self.pdf
 
     def compute_sf(self):
         """Compute the survival function.
