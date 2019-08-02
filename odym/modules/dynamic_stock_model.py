@@ -402,9 +402,9 @@ class DynamicStockModel(object):
             results. In some situations it is better to change the lifetime
             assumption than using the NegativeInflowCorrect option.
         """
-        if not self.s:
+        if self.s is None:
             raise ValueError('No stock specified.')
-        elif not self.lt:
+        elif self.lt is None:
             raise ValueError('No lifetime distribution specified.')
 
         self.s_c = np.zeros((len(self.t), len(self.t)))
